@@ -1,0 +1,7 @@
+jetbrains-toolbox.exe
+cccleaner.exe
+msedge.exe
+PowerToys.exe
+mysqld.exe
+CCleaner64.exe
+ONENOTEM.EXE
