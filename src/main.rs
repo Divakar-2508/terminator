@@ -50,7 +50,8 @@ fn main(){
     let file = OpenOptions::new()
         .read(true)
         .append(true)
-        .open("process_names.txt");
+        .create(true)
+        .open("process.txt");
 
     let mut file = match file {
         Ok(file) => file,
@@ -59,6 +60,7 @@ fn main(){
             return;
         }
     };
+
     if arg.len() > 0 {
         term_ui::run(&sys, &mut file);
         return;

@@ -1,24 +1,6 @@
-use std::{fs::File, io::{Write, Read}, str::FromStr, usize};
+use std::{fs::File, io::{Write, Read, Seek}, str::FromStr, usize};
 
 use sysinfo::{Pid, Process, ProcessExt, System, SystemExt};
-
-fn add(sys: &System, ids: Vec<Pid>, file: &mut File) {
-    // Open the file "process_names.txt" in append mode
-    // Iterate over the process IDs
-    for id in ids {
-        // Get the process with the given ID
-        let process = sys.process(id);
-        if let Some(process) = process {
-            // Get the process name
-            let name = process.name();
-            // Write the process name to the file
-            writeln!(file, "{}", name).unwrap();
-        } else {
-            println!("No process with the ID {} found", id);
-            continue;
-        }
-    }
-}
 
 fn help() {
     println!(
@@ -37,11 +19,24 @@ Example:
         "
     );
 
-    println!("3. quit, q - quit the current mode");
+    println!("3. quit, q - quit the current mode\n");
+
+    println!(
+        "4. show, shows the current list in terminate list"
+    );
+
+    println!(
+        "5. del <index>, delete the process from the terminate list
+Example:
+    - To delete a single process from list with index 2: del 2
+    - To delte multiple process with index 1, 3, 5: del 1 3 5"
+    );
+    println!()
 }
 
-fn show(file: &mut File) -> Option<Vec<String>> {
+fn show(file: &mut File,mode: Option<i32>) -> Option<Vec<String>> {
     let mut process_names = String::new();
+    file.seek(std::io::SeekFrom::Start(0)).unwrap();
     match file.read_to_string(&mut process_names) {
         Ok(_) => {},
         Err(e) => {
@@ -58,11 +53,16 @@ fn show(file: &mut File) -> Option<Vec<String>> {
         .map(|x| x.to_string())
         .collect();
 
-    for (index, name) in names.iter().enumerate() {
-        println!("{:0>}. {}", index, name);
+    if let Some(_) = mode {
+        return Some(names);
     }
-    
-    return Some(names);
+
+    for (index, name) in names.iter().enumerate() {
+        println!("{:0>2}. {}", index+1, name);
+    }
+    println!();
+
+    None
 }
 
 fn list(sys: &System, filters: Vec<String>) {
@@ -86,9 +86,27 @@ fn list(sys: &System, filters: Vec<String>) {
     println!("You can use 'add <pid>' (the number) to add the process to terminate");
 }
 
+fn add(sys: &System, ids: Vec<Pid>, file: &mut File) {
+    // Open the file "process_names.txt" in append mode
+    // Iterate over the process IDs
+    for id in ids {
+        // Get the process with the given ID
+        let process = sys.process(id);
+        if let Some(process) = process {
+            // Get the process name
+            let name = process.name();
+            // Write the process name to the file
+            writeln!(file, "{}", name).unwrap();
+        } else {
+            println!("No process with the ID {} found", id);
+            continue;
+        }
+    }
+}
+
 fn del(del_list: &mut Vec<usize>,file: &mut File) {
 
-    let mut process_names = match show(file) {
+    let mut process_names = match show(file, Some(1)) {
         None => { return; }
         Some(value) => value,
     };
@@ -96,11 +114,29 @@ fn del(del_list: &mut Vec<usize>,file: &mut File) {
     del_list.sort();
     del_list.reverse();
 
-    for to_be_deleted in del_list {
-        process_names.remove(*to_be_deleted);
+    let mut count = 0;
+
+    for &to_be_deleted in del_list.iter() {
+        if to_be_deleted < del_list.len() {
+            process_names.remove(to_be_deleted);
+            count += 1;
+        } else {
+            println!("Can't delete {}, no element in index!", to_be_deleted);
+        }
     }
 
-    // file
+    match file.set_len(0) {
+        Ok(_) => {}
+        Err(e) => {
+            println!("Can't delete the content\nError: {}", e);
+        }
+    }
+    
+    for process in process_names {
+        writeln!(file, "{}", process).unwrap();
+    }
+
+    println!("\nDeleted {} process from list, use 'show' to get the current list\n", count);
 }
 
 pub fn run(sys: &System, file: &mut File) {
@@ -136,18 +172,29 @@ pub fn run(sys: &System, file: &mut File) {
                 add(&sys, pids, file);
             }
             "show" => {
-                show(file);
+                show(file, None);
             }
             "del" => {
-                let mut del_id: Vec<usize> = command_real[1..]
+                
+                let mut del_ids: Vec<usize> = command_real[1..]
                     .into_iter()
-                    .filter_map(|x| Some(x.parse::<usize>().unwrap()))
+                    .filter_map(|x| {
+                        let value = x.parse::<usize>();
+                        if let Ok(value) = value {
+                            Some(value + 1)
+                        } else {
+                            None
+                        }
+                    }
+                    )
                     .collect();
-                if del_id.is_empty() {
+
+                if del_ids.is_empty() {
                     println!("Please specify the indexes");
                     return;
                 }
-                del(&mut del_id, file)
+
+                del(&mut del_ids, file)
             }
             _ => println!("Invalid command\n"),
         }
